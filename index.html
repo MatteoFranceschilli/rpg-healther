@@ -185,8 +185,8 @@ html,body{height:100%;background:var(--bg);}
 .profile-sub{font-size:11px;color:var(--text-muted);margin-top:2px;}
 .profile-badge{font-family:'Cinzel',serif;font-size:9px;color:var(--gold);background:var(--gold-bg);border:1px solid var(--gold-dark);padding:2px 9px;border-radius:20px;}
 .profile-actions{display:flex;gap:5px;flex-shrink:0;}
-/* ── LOGIN SCREEN ── */
-#login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px 20px;text-align:center;background:var(--bg);}
+/* ── LOGIN OVERLAY ── */
+#login-overlay{display:none;flex-direction:column;align-items:center;justify-content:center;}
 .login-logo{font-size:64px;margin-bottom:16px;}
 .login-title{font-family:'Cinzel',serif;font-size:28px;color:var(--gold);font-weight:700;margin-bottom:6px;}
 .login-sub{font-size:14px;color:var(--text-muted);margin-bottom:40px;line-height:1.6;}
@@ -311,10 +311,11 @@ html,body{height:100%;background:var(--bg);}
 </style>
 </head>
 <body>
-<div id="login-screen" style="display:none;">
-  <div class="login-logo">⚔️</div>
-  <div class="login-title">FitRPG</div>
-  <div class="login-sub">Trasforma i tuoi allenamenti<br>in avventure RPG.<br><br>Accedi per sincronizzare<br>i tuoi progressi su tutti i dispositivi.</div>
+<!-- LOGIN OVERLAY -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;text-align:center;">
+  <div style="font-size:64px;margin-bottom:16px;">⚔️</div>
+  <div style="font-family:'Cinzel',serif;font-size:28px;color:var(--gold);font-weight:700;margin-bottom:6px;">FitRPG</div>
+  <div style="font-size:14px;color:var(--text-muted);margin-bottom:40px;line-height:1.6;">Trasforma i tuoi allenamenti<br>in avventure RPG.<br><br>Accedi per sincronizzare i tuoi progressi.</div>
   <button class="login-btn" id="loginGoogleBtn">
     <span class="login-btn-icon">🔵</span>
     <span>Accedi con Google</span>
@@ -324,7 +325,7 @@ html,body{height:100%;background:var(--bg);}
     <span class="login-btn-icon">👤</span>
     <span>Continua senza account</span>
   </button>
-  <div style="font-size:10px;color:var(--text-muted);margin-top:20px;max-width:280px;line-height:1.6;">"Senza account" salva solo su questo dispositivo. Potrai collegare un account Google in seguito.</div>
+  <div style="font-size:10px;color:var(--text-muted);margin-top:20px;max-width:280px;line-height:1.6;">"Senza account" salva solo su questo dispositivo.</div>
 </div>
 
 <div id="app">
@@ -772,31 +773,24 @@ function updateAccountUI(user){
 }
 
 function showLoginScreen(){
-  document.getElementById('login-screen').style.display='flex';
-  document.getElementById('app').style.display='none';
+  document.getElementById('login-overlay').style.display='flex';
 }
 function showAppScreen(){
-  document.getElementById('login-screen').style.display='none';
-  document.getElementById('app').style.display='flex';
+  document.getElementById('login-overlay').style.display='none';
 }
 
 function initFirebaseAuth(){
   window._fbOnAuthStateChanged(window._fbAuth,async user=>{
+    showAppScreen(); // hide login overlay in any case
     if(user){
       currentUid=user.uid;
       updateAccountUI(user);
-      showAppScreen();
       await loadFromCloud();
-      updateUI();
-      showScreen('cal');
-      setTimeout(()=>drawRadar('heroRadar',P().stats),300);
+      // loadFromCloud calls updateUI internally
     } else {
       currentUid=null;
       updateAccountUI(null);
-      showAppScreen(); // still allow offline use
-      updateUI();
-      showScreen('cal');
-      setTimeout(()=>drawRadar('heroRadar',P().stats),300);
+      setSyncStatus('offline','Solo locale','—');
     }
   });
 }
@@ -806,11 +800,9 @@ window.addEventListener('firebaseReady',()=>{
   initFirebaseAuth();
 });
 
-// Fallback: if Firebase doesn't load
+// Fallback: if Firebase doesn't load in 4s, just mark offline
 setTimeout(()=>{
   if(!fbReady){
-    showAppScreen();updateUI();showScreen('cal');
-    setTimeout(()=>drawRadar('heroRadar',P().stats),300);
     setSyncStatus('offline','Firebase non disponibile');
   }
 },4000);
@@ -1495,10 +1487,11 @@ document.getElementById('loginGoogleBtn').addEventListener('click',async()=>{
   }catch(e){showToast('❌ '+( e.message||'Errore login'));}
 });
 document.getElementById('loginAnonBtn').addEventListener('click',async()=>{
-  if(!fbReady){showAppScreen();updateUI();showScreen('cal');setTimeout(()=>drawRadar('heroRadar',P().stats),300);return;}
+  showAppScreen(); // always hide overlay immediately
+  if(!fbReady)return;
   try{
     await window._fbSignInAnonymously(window._fbAuth);
-  }catch(e){showAppScreen();updateUI();showScreen('cal');setTimeout(()=>drawRadar('heroRadar',P().stats),300);}
+  }catch(e){setSyncStatus('offline','Solo locale');}
 });
 document.getElementById('logoutBtn').addEventListener('click',()=>{
   openConfirm('Esci dall'account?','I dati locali rimangono sul dispositivo.','🚪',async()=>{
@@ -1548,12 +1541,13 @@ document.getElementById('importFileInput').addEventListener('change',function(){
 });
 
 // ══════════════════════════════════════════════════
-// INIT — app starts hidden, Firebase decides when to show
+// INIT — app always visible, login overlay shown if needed
 // ══════════════════════════════════════════════════
-document.getElementById('app').style.display='none';
-document.getElementById('login-screen').style.display='none';
-// Firebase module will call showAppScreen() via onAuthStateChanged
-// Fallback handled above with setTimeout
+// App is always usable immediately with local data
+updateUI();
+showScreen('cal');
+setTimeout(()=>drawRadar('heroRadar',P().stats),300);
+// Firebase will sync data when ready via onAuthStateChanged
 </script>
 </body>
 </html>
